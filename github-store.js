@@ -1,0 +1,15 @@
+'use strict';
+// No credential is embedded or persisted. This client only calls api.github.com.
+class GitHubStore {
+ constructor(config,token,fetcher=globalThis.fetch.bind(globalThis)){
+  this.config=config;this.token=token;this.fetcher=fetcher;
+  if(!/^[A-Za-z0-9_.-]+$/.test(config.owner||'')||!/^[A-Za-z0-9_.-]+$/.test(config.repo||'')||!config.branch)throw Error('请先在“连接GitHub”填写仓库所有者、仓库名称和分支。');
+  if(!token)throw Error('请先在“连接GitHub”输入GitHub写入凭证；此凭证仅在当前页面使用。');
+ }
+ url(period,id){if(!/^\d{4}-\d{2}-\d{2}$/.test(period)||!/^H\d{3}$/.test(id))throw Error('周期或医院编号不正确');return `https://api.github.com/repos/${encodeURIComponent(this.config.owner)}/${encodeURIComponent(this.config.repo)}/contents/reports/${period}/${id}.json`}
+ async call(url,method='GET',body){let response=await this.fetcher(url,{method,cache:'no-store',headers:{Accept:'application/vnd.github+json',Authorization:'Bearer '+this.token,'X-GitHub-Api-Version':'2022-11-28',...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});if(method==='GET'&&response.status===404)return null;if(!response.ok){let messages={401:'GitHub凭证无效或已过期。',403:'GitHub未允许写入，请核对凭证的仓库授权或API额度。',404:'未找到仓库或分支，或凭证无权访问。',409:'GitHub记录已被其他人更新，请重新读取后核对保存。',422:'GitHub未接受保存，请核对分支、仓库设置或重新读取最新记录。'};throw Error(messages[response.status]||'GitHub操作失败（'+response.status+'），本机草稿仍保留。')}return response.json()}
+ decode(file){if(!file||file.encoding!=='base64'||!file.content||!file.sha)throw Error('GitHub文件格式不正确');let bytes=Uint8Array.from(atob(file.content.replace(/\s/g,'')),c=>c.charCodeAt(0));return JSON.parse(new TextDecoder().decode(bytes))}
+ async repository(){let info=await this.call(`https://api.github.com/repos/${encodeURIComponent(this.config.owner)}/${encodeURIComponent(this.config.repo)}`);if(!info||typeof info.private!=='boolean')throw Error('无法确认GitHub仓库，请核对仓库和凭证。');return info}
+ async load(period,id){let file=await this.call(this.url(period,id)+'?ref='+encodeURIComponent(this.config.branch));if(!file)return null;let r=this.decode(file);if(r.hospitalId!==id||r.periodStart!==period)throw Error('GitHub文件内容与医院或周期不匹配');return {...r,githubSha:file.sha}}
+ async save(record){let url=this.url(record.periodStart,record.hospitalId);let old=await this.call(url+'?ref='+encodeURIComponent(this.config.branch));if(old&&old.sha!==record.githubSha)throw Error('GitHub已有该医院的记录。请先点击“读取本区已保存数据”，核对后再修改保存。');if(!old&&record.githubSha)throw Error('GitHub原记录已不存在，请核对仓库或分支后重新读取。');let saved={...record,submittedAt:new Date().toISOString()};delete saved.githubSha;let bytes=new TextEncoder().encode(JSON.stringify(saved,null,2));let binary='';for(let b of bytes)binary+=String.fromCharCode(b);let result=await this.call(url,'PUT',{message:`PLS ${record.periodStart} ${record.hospitalId} progress`,branch:this.config.branch,content:btoa(binary),...(old?{sha:old.sha}:{})});if(!result?.content?.sha||!result?.commit?.sha)throw Error('GitHub未返回完整保存回执，请读取仓库确认，本机草稿仍保留。');return {record:{...saved,githubSha:result.content.sha}}}
+}
