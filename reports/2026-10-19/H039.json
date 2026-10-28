@@ -1,0 +1,18 @@
+{
+  "hospitalId": "H039",
+  "periodStart": "2026-10-19",
+  "periodEnd": "2026-11-01",
+  "reporter": "张蕾",
+  "updatedAt": "2026-10-28T13:11:41.826Z",
+  "ceo": "1",
+  "dean": "1",
+  "status": "已启动",
+  "progress": "000",
+  "issues": "000",
+  "support": "000",
+  "next": "000",
+  "owner": "000",
+  "due": "2026-10-30",
+  "signature": "张蕾",
+  "submittedAt": "2026-10-28T13:11:52.353Z"
+}
